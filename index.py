@@ -5,12 +5,55 @@ import json
 from elasticutils import get_es
 
 id_field = 'DocumentID'
+es = get_es(urls=sys.argv[1])
 
-# mapping is kinda like schema for ElasticSearch
+#Index Settings
+
+settings = {"analysis" : {
+                "tokenizer" : {
+                    "semicolon_token" : {
+                        "type" : "pattern",
+                        "pattern" : ";"
+                    }, 
+                    # "backslash_token" : {
+                    #     "type" : "pattern",
+                    #     "pattern" : "/"
+                    # } 
+                },
+                "analyzer" : {
+                    "semicolonanalyzer" : {
+                        "type" : "custom",
+                        "tokenizer" : "semicolon_token",
+                    },
+                #     "backslashnalyzer" : {
+                #         "type" : "custom",
+                #         "tokenizer" : "backslash_token",
+                # } 
+            }
+        }
+    }
+
+#ElasticSearch schema mapping
 mapping = {'properties': {
                 'DocumentID': {'type': 'string', 'index': 'not_analyzed'},
-                'JobTitle': {'type': 'string', 'index': 'analyzed'},  #
-                'OrganizationName': {'type': 'string', 'index': 'analyzed'},
+                'JobTitle': {
+                    "type": "string",
+                    "fields": {
+                        "raw" : {
+                          "type": "string",
+                          "index": "not_analyzed"
+                        }
+                    }
+                },  #
+                'OrganizationName': {                    
+                    "type": "string",
+                    "fields": {
+                        "raw" : {
+                          "type": "string",
+                          "index": "not_analyzed"
+                        }
+                    }
+                },
                 'AgencySubElement': {'type': 'string', 'index': 'not_analyzed'},
                 'SalaryMin': {'type': 'string', 'index': 'not_analyzed'},
                 'SalaryMax ': {'type': 'string', 'index': 'not_analyzed'}, #
@@ -20,10 +63,10 @@ mapping = {'properties': {
                 'WhoMayApplyText': {'type': 'string', 'index': 'analyzed'}, #
                 'PayPlan': {'type': 'string', 'index': 'not_analyzed'},
                 'Series': {'type': 'string', 'index': 'not_analyzed'},
-                'Grade': {'type': 'string', 'index': 'not_analyzed'},
+                'Grade': {'type': 'string', 'index': "not_analyzed"},
                 'WorkType': {'type': 'string', 'index': 'analyzed'},
                 'WorkSchedule': {'type': 'string', 'index': 'not_analyzed'},
-                'Locations': {'type': 'string', 'index': 'not_analyzed'},
+                'Locations': {'type': 'string', 'index': 'analyzed', 'index_analyzer': 'semicolonanalyzer'},
                 'AnnouncementNumber': {'type': 'string', 'index': 'not_analyzed'},
                 'JobSummary': {'type': 'string', 'index': 'analyzed'},
                 'ApplyOnlineURL': {'type': 'string', 'index': 'not_analyzed'},
@@ -36,14 +79,11 @@ def create_index(name, mapping):
     for simplicity, here we assume the index has only one type of document
     and the name of the doc_type is identical to the index 
     """
-    es = get_es(urls=['localhost:9200'])
-    es.indices.create(index=name)
+    es.indices.create(index=name, body={"settings":settings})
 
-    es.indices.put_mapping(index=name, doc_type=name, body={name: mapping })
+    es.indices.put_mapping(index=name, doc_type=name, body={name: mapping})
 
-index_name = sys.argv[1]
-
-es = get_es(urls=['localhost:9200'])
+index_name = 'jobs'
 
 if es.indices.exists(index=index_name): 
     print "index %s exists, removing ..." % index_name
@@ -60,7 +100,7 @@ for i in range(1, 201):
     data = json.load(response)
     jobData = data['JobData']
     for job in jobData:
-        es.index(index=index_name, doc_type=index_name, body=job, id=job[id_field])
+        es.index(index=index_name, doc_type=index_name, body=job, id=job[id_field], request_timeout=30)
 
 
 
