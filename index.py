@@ -1,5 +1,6 @@
 import sys
 import urllib2
+import httplib
 import json
 
 from elasticutils import get_es
@@ -15,20 +16,12 @@ settings = {"analysis" : {
                         "type" : "pattern",
                         "pattern" : ";"
                     }, 
-                    # "backslash_token" : {
-                    #     "type" : "pattern",
-                    #     "pattern" : "/"
-                    # } 
                 },
                 "analyzer" : {
                     "semicolonanalyzer" : {
                         "type" : "custom",
                         "tokenizer" : "semicolon_token",
                     },
-                #     "backslashnalyzer" : {
-                #         "type" : "custom",
-                #         "tokenizer" : "backslash_token",
-                # } 
             }
         }
     }
@@ -93,18 +86,26 @@ else:
     print "creating index ..."
 create_index(index_name, mapping)
 print "now indexing data ..."
-
-for i in range(1, 201):
-    url = 'https://data.usajobs.gov/api/jobs?page='+str(i)
-    response = urllib2.urlopen(url)
+base_url = 'https://data.usajobs.gov/api/jobs?&Series='
+with open(sys.argv[2]) as data_file:    
+    seriesJson = json.load(data_file)
+for series in seriesJson:
+    code=series['Code']
+    page_url = base_url+code
+    response = urllib2.urlopen(page_url)
     data = json.load(response)
-    jobData = data['JobData']
-    for job in jobData:
-        es.index(index=index_name, doc_type=index_name, body=job, id=job[id_field], request_timeout=30)
-
-
-
-
-
-
-
+    pages = data['Pages']
+    page_int = int(pages)
+    if page_int > 1:
+        for i in range(1, page_int+1):
+            url = page_url+'&Page='+str(i)
+            print url
+            final_response = urllib2.urlopen(url)
+            data = json.load(final_response)
+            jobData = data['JobData']
+            for job in jobData:
+                es.index(index=index_name, doc_type=index_name, body=job, id=job[id_field], request_timeout=30)
+    else:
+        jobData = data['JobData']
+        for job in jobData:
+            es.index(index=index_name, doc_type=index_name, body=job, id=job[id_field], request_timeout=30)
